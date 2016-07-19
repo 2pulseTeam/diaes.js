@@ -1,0 +1,80 @@
+// todo: Source, SourceQueue
+// Une Source c'est le sourceNode plus toutes les données nécessaires
+// à gérer la lecture du fragment, genre une durée, une horloge, etc.
+// Une SourceQueue permet de queue et dequeue des sources qui se
+// jouent les unes à la suite des autres. Elle gère le temps, la mise
+// en pause, et s'occupe de tout les events qui font que la lecture
+// marche de façon fluide.
+
+/*
+Source :
+	Propriétés :
+	- node
+	- buffer
+	- queue
+	- duration
+	- startsAt
+	- startsFrom
+	- endTimer
+	- endCallback
+
+	Méthodes :
+	- setup() : currentTime && creates node
+	- schedule()
+	- cancel()
+
+SourceQueue :
+	Propriétés :
+	- reader
+	- state
+	- sources
+
+	Méthodes :
+	- empty()
+	- first()
+	- last()
+	- shift()
+	- push()
+	- play()
+	- pause()
+
+	Méthodes privées :
+	- cancelAll()
+
+	La queue commence en STATE_PAUSED.
+	Lorsque l'on ajoute une source à la queue, on ne fait rien de
+	plus si on est en STATE_PAUSED, mais si on est en STATE_PLAYING,
+	on renseigne le startsAt (en fonction du temps courant et de la
+	durée restante à lire des éléments déjà dans la file), puis on
+	appelle schedule() sur la source, ce qui fait deux choses :
+		1. Planifie la lecture à startsAt sur le node.
+		2. Planifie l'exécution d'un timer au moment prévu de
+		   fin de la lecture, et le stocke dans endTimer.
+		   Au moment où le timer sera déclenché, il appellera stop
+		   sur le noeud, puis supprimera la source de la queue, et
+		   enfin appellera le endCallback.
+	On peut empêcher les évènements planifiés par schedule() de se
+	produire, en appellant cancel(), qui va alors faire directement
+	stop sur le noeud (ce qui aura pour effet d'annuler toute
+	planification de play future), et va clearTimeout le timer.
+
+	Quand on appelle pause(), si on est déjà en STATE_PAUSED on fait
+	rien, sinon si on est en STATE_PLAYING on commence par cancelAll(),
+	ce qui aura pour effet d'appeller cancel() sur toutes les sources,
+	et donc en particulier stopera la lecture de la source actuelle.
+	Ensuite, on note le temps courant, et on change donc le startsFrom
+	de la source actuelle (la première de la file) pour que, quand ça
+	redémarre, ça le fasse depuis l'endroit où on vient de s'arrêter.
+		Quelque-chose du genre :
+			elapsed = currentTime - startsAt
+			startsFrom += elapsed
+
+	Quand on appelle play(), soit déjà STATE_PLAYING, soit si on est
+	en STATE_PAUSED on fait comme si on crééait une nouvelle file
+	avec chacune des sources déjà présentes, mais en prenant en compte
+	le nouveau startsFrom de la source actuelle (la première de la file).
+
+	C'est-à-dire re-appeller la fonction qui calcule le startsAt puis
+	re-appeller schedule() sur chacunes des sources, DANS L'ORDRE !
+	(Pour que le calcule de startsAt se propage correctement).
+*/

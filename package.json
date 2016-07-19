@@ -1,0 +1,11 @@
+{
+  "name": "diaes.js",
+  "version": "1.0.0",
+  "description": "Obfuscated audio playback for the web",
+  "main": "diaes.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Romain Liautaud <romain@liautaud.fr>",
+  "license": "ISC"
+}
