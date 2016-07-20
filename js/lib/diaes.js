@@ -14,7 +14,7 @@
  * @author    Romain Liautaud <romain@liautaud.fr>
  */
 
-define(['sha1', 'Crypto'], function (sha1, Crypto) {
+define(['Crypto'], function (Crypto) {
 	'use strict';
 
 	/**
@@ -35,6 +35,8 @@ define(['sha1', 'Crypto'], function (sha1, Crypto) {
 	 *   a different 128 bit key for each fragment. This
 	 *   makes the audio files unreadable unless decoded.
 	 */
+
+	const FRAGMENT_DURATION = 7.0;
 
 	const STATE_PAUSED    = 0;
 	const STATE_PLAYING   = 1;
@@ -256,13 +258,15 @@ define(['sha1', 'Crypto'], function (sha1, Crypto) {
 	 * Returns the fragment number associated with a time.
 	 */
 	Reader.prototype.getFragmentNumber = function (time) {
-		return Math.floor(time / 10);
+		return Math.floor(time / FRAGMENT_DURATION);
 	};
 
 	/**
 	 * Returns the path of a given audio fragment.
 	 */
 	Reader.prototype.getFragmentPath = function (number) {
+		// TODO
+		return;
 		var separator = this.path.slice(-1) == '/' ? '' : '/';
 
 		return this.path + separator + this.id + '-' + sha1(this.id + '-' + this.number);
@@ -410,7 +414,7 @@ define(['sha1', 'Crypto'], function (sha1, Crypto) {
 	Reader.prototype.setCurrentTime = function (time) {
 		var that = this;
 		var number = that.getFragmentNumber(time);
-		var offset = time % 10;
+		var offset = time % FRAGMENT_DURATION;
 
 		that.buffering = true;
 		that.queue.empty();
@@ -519,5 +523,4 @@ define(['sha1', 'Crypto'], function (sha1, Crypto) {
 	};
 });
 
-// https://www.npmjs.com/package/sha1
 // https://github.com/wader/aes-arraybuffer
