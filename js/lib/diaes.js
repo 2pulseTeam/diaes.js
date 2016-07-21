@@ -14,7 +14,7 @@
  * @author    Romain Liautaud <romain@liautaud.fr>
  */
 
-define(['Crypto'], function (Crypto) {
+define(['jquery', 'Crypto'], function ($, Crypto) {
 	'use strict';
 
 	/**
@@ -31,12 +31,12 @@ define(['Crypto'], function (Crypto) {
 	 *   server, whose path can be retrieved using
 	 *   	Reader.getFragmentPath(number);
 	 *
-	 * - Then, it encodes every fragment using AES-CTR, with
+	 * - Then, it encodes every fragment using AES-CBC, with
 	 *   a different 128 bit key for each fragment. This
 	 *   makes the audio files unreadable unless decoded.
 	 */
 
-	const FRAGMENT_DURATION = 7.0;
+	const FRAGMENT_DURATION = 15.0;
 
 	const STATE_PAUSED    = 0;
 	const STATE_PLAYING   = 1;
@@ -49,9 +49,10 @@ define(['Crypto'], function (Crypto) {
 	 * information for that buffer.
 	 */
 	var Source = function (buffer, queue) {
-		this.buffer = buffer;       // Audio buffer
-		this.queue  = queue;        // Parent queue
-		this.reader = queue.reader; // Parent reader
+		this.buffer = buffer;        // Audio buffer
+		this.queue  = queue;         // Parent queue
+		this.reader = queue.reader;  // Parent reader
+		this.player = reader.player; // Parent player
 
 		this.node = null;
 		this.startsAt = null;
@@ -68,7 +69,7 @@ define(['Crypto'], function (Crypto) {
 	 * @param int index The index of the current element in the queue.
 	 */
 	Source.prototype.setup = function (index) {
-		this.node = that.context.createBufferSource();
+		this.node = this.context.createBufferSource();
 		this.node.connect(this.reader.gain);
 
 		if (index > 0) {
@@ -84,7 +85,6 @@ define(['Crypto'], function (Crypto) {
 	Source.prototype.schedule = function () {
 		this.node.start(this.startsAt, this.startsFrom);
 
-		var that = this;
 		var endsAt = this.startsAt + this.buffer.duration;
 		var endsIn = this.endsAt - this.reader.context.currentTime;
 
@@ -93,7 +93,7 @@ define(['Crypto'], function (Crypto) {
 		}
 
 		this.endTimer = setTimeout(function () {
-			that.queue.shift();
+			this.queue.shift();
 
 			if (this.first().endCallback) {
 				this.first().endCallback();
@@ -236,22 +236,47 @@ define(['Crypto'], function (Crypto) {
 	 * An audio reader. Fetches the fragments of the audio file,
 	 * and manages them using an audio source queue.
 	 */
-	var Reader = function (path, id) {
+	var Reader = function (path) {
 		this.path = path;
-		this.id = id;
 
 		this.context = new (window.AudioContext || window.webkitAudioContext)();
-		this.buffers = {};
+		this.fragments = [];
 		this.queue = new SourceQueue(this);
 		this.previousFragmentsElapsed = 0.0;
 		this.currentFragmentNumber = 0;
 		this.buffering = false;
+		this.duration = null;
 
 		this.gain = this.context.createGain();
 		this.gain.connect(this.context.destination);
 
-		this.loadAndScheduleFragment(0);
-		this.loadAndScheduleFragment(1);
+		this.fetchMetadata(function () {
+			this.loadAndScheduleFragment(0);
+			this.loadAndScheduleFragment(1);
+		});
+	};
+
+	/**
+	 * Fetches the file's metadata.
+	 */
+	Reader.prototype.fetchMetadata = function (callback) {
+		var that = this;
+
+		// TODO : Remplacer ce code si besoin (JWT etc.)
+		$.getJSON(this.path, function (metadata) {
+			that.duration = metadata.duration;
+			
+			$.each(metadata.fragments, function (index, fragment) {
+				that.fragments.push({
+					buffer: null,
+					path: fragment.path,
+					key: fragment.key,
+					iv: fragment.iv
+				});
+			});
+
+			callback();
+		});
 	};
 
 	/**
@@ -262,42 +287,28 @@ define(['Crypto'], function (Crypto) {
 	};
 
 	/**
-	 * Returns the path of a given audio fragment.
+	 * Converts a hex string into a Uint8Array.
 	 */
-	Reader.prototype.getFragmentPath = function (number) {
-		// TODO
-		return;
-		var separator = this.path.slice(-1) == '/' ? '' : '/';
+	Reader.prototype.convertHex = function (hex) {
+		var bytes = [];
+		hex = hex.trim();
 
-		return this.path + separator + this.id + '-' + sha1(this.id + '-' + this.number);
-	};
+		for (var c = 0; c < hex.length; c += 2) {
+			bytes.push(parseInt(hex.substr(c, 2), 16));
+		}
 
-	/**
-	 * Returns the key which should be used to decode
-	 * a given fragment.
-	 */
-	Reader.prototype.getFragmentKey = function (number) {
-		var key = new Uint8Array([
-			0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-			0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef
-		]); // todo
-
-		return key.buffer;
+		return new Uint8Array(bytes);
 	};
 
 	/**
 	 * Decodes the given ArrayBuffer.
 	 */
-	Reader.prototype.decodeFragment = function (number, buffer) {
-		return buffer; //todo
+	Reader.prototype.decodeFragment = function (number, encodedRawBuffer) {
+		// https://github.com/wader/aes-arraybuffer
+		var key = this.convertHex(this.fragments[number].key).buffer;
+		var iv  = this.convertHex(this.fragments[number].iv).buffer;
 
-		var key = this.getFragmentKey(number);
-		var iv = new Uint8Array([
-			0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef,
-			0x01, 0x23, 0x45, 0x67, 0x89, 0xab, 0xcd, 0xef
-		]);
-
-		return Crypto.pkcs_unpad(Crypto.decrypt_aes_cbc(buffer, key, iv.buffer));
+		return Crypto.pkcs_unpad(Crypto.decrypt_aes_cbc(encodedRawBuffer, key, iv));
 	};
 
 	/**
@@ -305,16 +316,15 @@ define(['Crypto'], function (Crypto) {
 	 * the binary data to the callback.
 	 */
 	Reader.prototype.fetchFragment = function (number, callback) {
-		var that = this;
-		var path = this.getFragmentPath(number);
+		var path = this.fragments[number].path;
 		var request = new XMLHttpRequest();
 
 		request.open('GET', path, true);
 		request.responseType = 'arraybuffer';
 		request.onload = function () {
-			var buffer = request.response;
+			var encodedRawBuffer = request.response;
 
-			callback(number, that.decodeFragment(number, buffer));
+			callback(number, this.decodeFragment(number, encodedRawBuffer));
 		};
 
 		request.send();
@@ -324,26 +334,29 @@ define(['Crypto'], function (Crypto) {
 	 * Checks whether a given fragment is loaded into memory.
 	 */
 	Reader.prototype.isFragmentLoaded = function (number) {
-		return number in this.buffers;
+		return this.fragments[number].buffer !== null;
 	}
 
 	/**
 	 * Loads a given fragment into memory.
 	 */
 	Reader.prototype.loadFragment = function (number, callback) {
-		var that = this;
+		// Maybe the fragment doesn't exist?
+		if (number >= this.fragments.length) {
+			return;
+		}
 
 		// Maybe the fragment was already loaded?
-		if (that.isFragmentLoaded(number)) {
+		if (this.isFragmentLoaded(number)) {
 			callback(number);
 			return;
 		}
 
 		// Otherwise, fetch the fragment and create
 		// the matching AudioBuffer.
-		that.fetchFragment(number, function (number, data) {
-			that.context.decodeAudioData(data, function (buffer) {
-				that.buffers[number] = buffer;
+		this.fetchFragment(number, function (number, decodedRawBuffer) {
+			this.context.decodeAudioData(decodedRawBuffer, function (audioBuffer) {
+				this.fragments[number].buffer = audioBuffer;
 
 				callback(number);
 			});
@@ -359,15 +372,14 @@ define(['Crypto'], function (Crypto) {
 	Reader.prototype.scheduleFragment = function (number, offset) {
 		console.log('Scheduling fragment ' + number + ' with offset ' + offset);
 
-		var that = this;
-		var source = that.queue.push(that.buffers[number]);
+		var source = this.queue.push(this.fragments[number].buffer);
 
 		source.endCallback = function () {
 			this.previousFragmentsElapsed += source.buffer.duration;
-			that.currentFragmentNumber += 1;
+			this.currentFragmentNumber += 1;
 			
 			// Make sure we load the n + 2 fragment when this one ends.
-			that.loadAndScheduleFragment(number + 2);
+			this.loadAndScheduleFragment(number + 2);
 		};
 
 		// Maybe we must start playing the fragment with a given offset?
@@ -380,10 +392,8 @@ define(['Crypto'], function (Crypto) {
 	 * Loads and schedules a given fragment.
 	 */
 	Reader.prototype.loadAndScheduleFragment = function (number, offset) {
-		var that = this;
-
-		that.loadFragment(number, function () {
-			that.scheduleFragment(number, offset);
+		this.loadFragment(number, function () {
+			this.scheduleFragment(number, offset);
 		});
 	};
 
@@ -412,24 +422,23 @@ define(['Crypto'], function (Crypto) {
 	 * Seeks to a given time in the track.
 	 */
 	Reader.prototype.setCurrentTime = function (time) {
-		var that = this;
-		var number = that.getFragmentNumber(time);
+		var number = this.getFragmentNumber(time);
 		var offset = time % FRAGMENT_DURATION;
 
-		that.buffering = true;
-		that.queue.empty();
+		this.buffering = true;
+		this.queue.empty();
 
-		that.loadFragment(number, function () {
-			that.buffering = false;
-			that.scheduleFragment(number, offset);
+		this.loadFragment(number, function () {
+			this.buffering = false;
+			this.scheduleFragment(number, offset);
 		});
 	};
 
 	/**
 	 * An audio player which mimics the HTMLAudioElement interface.
 	 */
-	var Player = function (path, id) {
-		this.reader = new Reader(path, id);
+	var Player = function (path) {
+		this.reader = new Reader(path);
 	};
 
 	Player.prototype = {
@@ -477,12 +486,17 @@ define(['Crypto'], function (Crypto) {
 			this.reader.setCurrentTime(time);
 		},
 
-		// Audio file metadata
-		metadata: {}, //todo
-
 		get duration() {
-			return this.metadata.duration; //todo
-		}
+			return this.reader.duration;
+		},
+
+		// Player callbacks
+		onPlay: function() {},
+		onPause: function() {},
+		onStop: function() {},
+		onEnded: function() {},
+		onLoaded: function() {},
+		whilePlaying: function() {},
 	};
 
 	/**
@@ -490,6 +504,7 @@ define(['Crypto'], function (Crypto) {
 	 */
 	Player.prototype.play = function () {
 		this.reader.queue.play();
+		this.onPlay();
 	};
 
 	/**
@@ -497,6 +512,7 @@ define(['Crypto'], function (Crypto) {
 	 */
 	Player.prototype.pause = function () {
 		this.reader.queue.pause();
+		this.onPause();
 	};
 
 	/**
@@ -518,9 +534,6 @@ define(['Crypto'], function (Crypto) {
 	};
 
 	return {
-		Player: Player,
-		Crypto: Crypto
+		Player: Player
 	};
 });
-
-// https://github.com/wader/aes-arraybuffer
