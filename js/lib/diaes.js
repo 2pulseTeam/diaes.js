@@ -49,10 +49,12 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * information for that buffer.
 	 */
 	var Source = function (buffer, queue) {
-		this.buffer = buffer;        // Audio buffer
-		this.queue  = queue;         // Parent queue
-		this.reader = queue.reader;  // Parent reader
-		this.player = reader.player; // Parent player
+		console.log('Instanciated source', buffer, queue);
+
+		this.buffer = buffer;              // Audio buffer
+		this.queue  = queue;               // Parent queue
+		this.reader = queue.reader;        // Parent reader
+		this.player = queue.reader.player; // Parent player
 
 		this.node = null;
 		this.startsAt = null;
@@ -69,7 +71,10 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * @param int index The index of the current element in the queue.
 	 */
 	Source.prototype.setup = function (index) {
-		this.node = this.context.createBufferSource();
+		console.log('Setup source', this);
+
+		this.node = this.reader.context.createBufferSource();
+		this.node.buffer = this.buffer;
 		this.node.connect(this.reader.gain);
 
 		if (index > 0) {
@@ -77,39 +82,66 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 		} else {
 			this.startsAt = this.reader.context.currentTime;
 		}
+
+		console.log('New startsAt:', this.startsAt);
 	};
 
 	/**
 	 * Schedules the beginning and the end of the play.
 	 */
 	Source.prototype.schedule = function () {
-		this.node.start(this.startsAt, this.startsFrom);
+		console.log('Schedule source', this);
 
-		var endsAt = this.startsAt + this.buffer.duration;
-		var endsIn = this.endsAt - this.reader.context.currentTime;
+		var that = this;
 
-		if (this.endTimer) {
-			clearTimeout(this.endTimer);
+		that.node.start(that.startsAt, that.startsFrom);
+
+		var endsAt = that.startsAt + that.buffer.duration;
+		var endsIn = endsAt - that.reader.context.currentTime;
+
+		console.log('endsIn:', endsIn);
+
+		if (that.endTimer) {
+			clearTimeout(that.endTimer);
 		}
 
-		this.endTimer = setTimeout(function () {
-			this.queue.shift();
+		that.endTimer = setTimeout(function () {
+			console.log('Source ended 100ms ago', that);
 
-			if (this.first().endCallback) {
-				this.first().endCallback();
+			if (that.endCallback) {
+				that.endCallback();
 			}
-		}, endsIn);
+
+			that.queue.shift();
+		}, endsIn * 1000 + 100);
 	};
 
 	/**
 	 * Cancels any previously scheduled event.
 	 */
 	Source.prototype.cancel = function () {
-		this.buffer.stop();
+		console.log('Cancel source', this);
 
+		this.node.stop();
 		clearTimeout(this.endTimer);
-
 		this.endTimer = null;
+	};
+
+	/**
+	 * Destroys the audio source.
+	 */
+	Source.prototype.destroy = function () {
+		this.cancel();
+		delete this.buffer;
+		delete this.queue ;
+		delete this.reader;
+		delete this.player;
+
+		delete this.node;
+		delete this.startsAt;
+		delete this.startsFrom;
+		delete this.endTimer;
+		delete this.endCallback;
 	};
 
 	/**
@@ -126,6 +158,7 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 		return this.buffer.duration - this.elapsed();
 	};
 
+	// -------------------------------------------------------------------- //
 
 	/**
 	 * An audio source queue. Manages several audio sources, and plays
@@ -170,7 +203,7 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * Removes the first inserted source from the queue.
 	 */
 	SourceQueue.prototype.shift = function () {
-		this.first().cancel();
+		this.first().destroy();
 		
 		this.sources.shift();
 	};
@@ -179,6 +212,8 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * Adds a buffer to the queue.
 	 */
 	SourceQueue.prototype.push = function (buffer) {
+		console.log('Pushing to the queue', buffer);
+
 		var source = new Source(buffer, this);
 		var sourceIndex = this.sources.length;
 
@@ -188,6 +223,8 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 			source.setup(sourceIndex);
 			source.schedule();
 		}
+
+		return source;
 	};
 
 	/**
@@ -207,7 +244,7 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 			return;
 		}
 
-		for (i in this.sources) {
+		for (var i = 0; i < this.sources.length; i++) {
 			var source = this.get(i);
 			source.setup(i);
 			source.schedule();
@@ -222,7 +259,7 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 			return;
 		}
 
-		for (i in this.sources) {
+		for (var i = 0; i < this.sources.length; i++) {
 			this.get(i).cancel();
 		}
 
@@ -231,15 +268,16 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 		}
 	};
 
+	// -------------------------------------------------------------------- //
 
 	/**
 	 * An audio reader. Fetches the fragments of the audio file,
 	 * and manages them using an audio source queue.
 	 */
-	var Reader = function (path) {
-		this.path = path;
+	var Reader = function (path, player) {
+		this.path   = path;   // Path to the file metadata
+		this.player = player; // Parent player
 
-		this.context = new (window.AudioContext || window.webkitAudioContext)();
 		this.fragments = [];
 		this.queue = new SourceQueue(this);
 		this.previousFragmentsElapsed = 0.0;
@@ -247,12 +285,15 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 		this.buffering = false;
 		this.duration = null;
 
-		this.gain = this.context.createGain();
-		this.gain.connect(this.context.destination);
+		this.manager = this.player.manager;
+		this.context = this.manager.context;
+		this.gain    = this.manager.gain;
 
-		this.fetchMetadata(function () {
-			this.loadAndScheduleFragment(0);
-			this.loadAndScheduleFragment(1);
+		var that = this;
+
+		that.fetchMetadata(function () {
+			that.loadAndScheduleFragment(0);
+			that.loadAndScheduleFragment(1);
 		});
 	};
 
@@ -262,7 +303,6 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	Reader.prototype.fetchMetadata = function (callback) {
 		var that = this;
 
-		// TODO : Remplacer ce code si besoin (JWT etc.)
 		$.getJSON(this.path, function (metadata) {
 			that.duration = metadata.duration;
 			
@@ -316,7 +356,8 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * the binary data to the callback.
 	 */
 	Reader.prototype.fetchFragment = function (number, callback) {
-		var path = this.fragments[number].path;
+		var that = this;
+		var path = that.fragments[number].path;
 		var request = new XMLHttpRequest();
 
 		request.open('GET', path, true);
@@ -324,7 +365,7 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 		request.onload = function () {
 			var encodedRawBuffer = request.response;
 
-			callback(number, this.decodeFragment(number, encodedRawBuffer));
+			callback(number, that.decodeFragment(number, encodedRawBuffer));
 		};
 
 		request.send();
@@ -352,11 +393,11 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 			return;
 		}
 
-		// Otherwise, fetch the fragment and create
-		// the matching AudioBuffer.
-		this.fetchFragment(number, function (number, decodedRawBuffer) {
-			this.context.decodeAudioData(decodedRawBuffer, function (audioBuffer) {
-				this.fragments[number].buffer = audioBuffer;
+		var that = this;
+
+		that.fetchFragment(number, function (number, decodedRawBuffer) {
+			that.context.decodeAudioData(decodedRawBuffer, function (audioBuffer) {
+				that.fragments[number].buffer = audioBuffer;
 
 				callback(number);
 			});
@@ -372,14 +413,16 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	Reader.prototype.scheduleFragment = function (number, offset) {
 		console.log('Scheduling fragment ' + number + ' with offset ' + offset);
 
-		var source = this.queue.push(this.fragments[number].buffer);
+		var that = this;
+
+		var source = that.queue.push(that.fragments[number].buffer);
 
 		source.endCallback = function () {
-			this.previousFragmentsElapsed += source.buffer.duration;
-			this.currentFragmentNumber += 1;
+			that.previousFragmentsElapsed += source.buffer.duration;
+			that.currentFragmentNumber += 1;
 			
 			// Make sure we load the n + 2 fragment when this one ends.
-			this.loadAndScheduleFragment(number + 2);
+			that.loadAndScheduleFragment(number + 2);
 		};
 
 		// Maybe we must start playing the fragment with a given offset?
@@ -392,8 +435,10 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * Loads and schedules a given fragment.
 	 */
 	Reader.prototype.loadAndScheduleFragment = function (number, offset) {
-		this.loadFragment(number, function () {
-			this.scheduleFragment(number, offset);
+		var that = this;
+
+		that.loadFragment(number, function () {
+			that.scheduleFragment(number, offset);
 		});
 	};
 
@@ -422,23 +467,43 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	 * Seeks to a given time in the track.
 	 */
 	Reader.prototype.setCurrentTime = function (time) {
-		var number = this.getFragmentNumber(time);
+		var that = this;
+
+		var number = that.getFragmentNumber(time);
 		var offset = time % FRAGMENT_DURATION;
 
-		this.buffering = true;
-		this.queue.empty();
+		that.buffering = true;
+		that.queue.empty();
 
-		this.loadFragment(number, function () {
-			this.buffering = false;
-			this.scheduleFragment(number, offset);
+		that.loadFragment(number, function () {
+			that.buffering = false;
+			that.scheduleFragment(number, offset);
 		});
 	};
 
 	/**
+	 * Destroys the audio reader.
+	 */
+	Reader.prototype.destroy = function () {
+		this.queue.empty();
+		this.fragments = [];
+
+		delete this.player;
+		delete this.queue;
+
+		delete this.manager;
+		delete this.context;
+		delete this.gain;
+	};
+
+	// -------------------------------------------------------------------- //
+
+	/**
 	 * An audio player which mimics the HTMLAudioElement interface.
 	 */
-	var Player = function (path) {
-		this.reader = new Reader(path);
+	var Player = function (path, manager) {
+		this.manager = manager;
+		this.reader  = new Reader(path, this);
 	};
 
 	Player.prototype = {
@@ -460,24 +525,6 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 			return this.reader.state() == STATE_ENDED;
 		},
 
-		get muted() {
-			return this.properties.volume;
-		},
-
-		set muted(muted) {
-			this.properties.muted = muted;
-			this.onMutedChange();
-		},
-
-		get volume() {
-			return this.properties.volume;
-		},
-
-		set volume(volume) {
-			this.properties.volume = volume;
-			this.onVolumeChange();
-		},
-
 		get currentTime() {
 			return this.reader.getCurrentTime();
 		},
@@ -491,12 +538,24 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 		},
 
 		// Player callbacks
-		onPlay: function() {},
-		onPause: function() {},
-		onStop: function() {},
-		onEnded: function() {},
-		onLoaded: function() {},
-		whilePlaying: function() {},
+		onPlay: function() {
+			console.info('onPlay');
+		},
+		onPause: function() {
+			console.log('onPause');
+		},
+		onEnded: function() {
+			console.log('onEnded');
+		},
+		onBufferingStart: function() {
+			console.log('onBufferingStart');
+		},
+		onBufferingStop: function() {
+			console.log('onBufferingStop');
+		},
+		whilePlaying: function() {
+			console.log('whilePlaying');
+		}
 	};
 
 	/**
@@ -516,24 +575,103 @@ define(['jquery', 'Crypto'], function ($, Crypto) {
 	};
 
 	/**
-	 * Triggers when the player gets (un)muted.
+	 * Destroys the audio player.
 	 */
-	Player.prototype.onMutedChange = function() {
-		if (this.properties.muted) {
-			this.reader.gain.gain.value = 0.0;
-		} else {
-			this.onVolumeChange();
+	Player.prototype.destroy = function () {
+		this.reader.destroy();
+
+		delete this.reader;
+		delete this.manager;
+	};
+
+	// -------------------------------------------------------------------- //
+
+	/**
+	 * An audio player manager. Manages multiple audio player
+	 * instances, which all share a common AudioContext and
+	 * gain node.
+	 */
+	var Manager = function () {
+		this.context = new (window.AudioContext || window.webkitAudioContext)();
+		this.gain = this.context.createGain();
+		this.gain.connect(this.context.destination);
+	};
+
+	Manager.prototype = {
+		players: [],
+		muted: false,
+		volume: 1.0,
+
+		onMute: function() {},
+		onUnmute: function() {},
+		onVolumeChange: function() {}
+	};
+
+	/**
+	 * Adds a new player to the manager.
+	 */
+	Manager.prototype.add = function (path) {
+		var player = new Player(path, this);
+
+		this.players.push(player);
+
+		return player;
+	};
+
+	/**
+	 * Destroys all but the last player from the manager.
+	 */
+	Manager.prototype.destroyUnused = function () {
+		while (this.players.length > 1) {
+			var unused = this.players.shift();
+
+			unused.destroy();
 		}
 	};
 
 	/**
-	 * Triggers when the player's volume changes.
+	 * Mutes every managed player.
 	 */
-	Player.prototype.onVolumeChange = function() {
-		this.reader.gain.gain.value = this.properties.volume;
+	Manager.prototype.mute = function () {
+		this.muted = true;
+		this.gain.gain.value = 0.0;
+
+		this.onMute();
 	};
 
+	/**
+	 * Unmutes every managed player.
+	 */
+	Manager.prototype.unmute = function () {
+		this.muted = false;
+		this.setVolume(this.volume);
+
+		this.onUnmute();
+	};
+
+	/**
+	 * Sets the volume of every manager player.
+	 */
+	Manager.prototype.setVolume = function (volume) {
+		this.volume = volume;
+		this.reader.gain.gain.value = this.properties.volume;
+
+		this.onVolumeChange();
+	};
+
+	/**
+	 * Pauses every managed player.
+	 */
+	Manager.prototype.pauseAll = function () {
+		for (var i = 0; i < this.players.length; i++) {
+			this.players[i].pause();
+		}
+	};
+
+	// -------------------------------------------------------------------- //
+
 	return {
-		Player: Player
+		Player: Player,
+		Manager: Manager
 	};
 });

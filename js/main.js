@@ -1,3 +1,5 @@
+define.amd.jQuery = true;
+
 requirejs.config({
 	baseUrl: 'js/lib',
 	paths: {
