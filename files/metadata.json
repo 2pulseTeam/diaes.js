@@ -1,6 +1,0 @@
-{"duration":59.533061,"fragments":[
-	{"path": "/files/encoded-0000.mp3", "key":"7a324b1919c61fa6d0561552b82d5dd45e7dc59936695c9302c1f52f2a9218c4","iv":"f5c1110a9b3a2d87684b90ae2d9c4e65"},
-	{"path": "/files/encoded-0001.mp3", "key":"49b9e9a3445f7f3ff29f8b108cc175cd8429374337c8212dbe3c8c61d9705c77","iv":"a433f11a8e2ba3b175d5af057b647de5"},
-	{"path": "/files/encoded-0002.mp3", "key":"e5140ff243b5bb7fc44ba71bb237d84f8e7a314140284c61c6c28eeb45c5e5e7","iv":"2b4dcc78fb50de56d0a3931a5b4aa98c"},
-	{"path": "/files/encoded-0003.mp3", "key":"0ac1a709acd2b5a10f83b96acec285e2b7d10b3405961897e4c09d061e9cf16a","iv":"12bfda93e6bdc2f21f53140adaaa0af8"}
-]}
