@@ -345,6 +345,8 @@ var Reader = function (path, player) {
 	var that = this;
 
 	that.fetchMetadata(function () {
+		that.player.onMetadataFetched();
+
 		that.loadAndScheduleFragment(0, 12, function () {
 			that.loadAndScheduleFragment(1);
 		});
@@ -610,6 +612,9 @@ Player.prototype = {
 	},
 
 	// Player callbacks
+	onMetadataFetched: function() {
+		console.info('onMetadataFetched');
+	},
 	onPlay: function() {
 		console.info('onPlay');
 	},
@@ -691,7 +696,7 @@ Manager.prototype.add = function (path) {
 /**
  * Destroys all but the last player from the manager.
  */
-Manager.prototype.destroyUnused = function () {
+Manager.prototype.destroyUnused = function () { // todo: pas le dernier !
 	while (this.players.length > 1) {
 		var unused = this.players.shift();
 
