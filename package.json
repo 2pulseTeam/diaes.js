@@ -7,5 +7,6 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "author": "Romain Liautaud <romain@liautaud.fr>",
-  "license": "ISC"
+  "license": "ISC",
+  "main": "lib/diaes.js"
 }
