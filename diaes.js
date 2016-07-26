@@ -14,7 +14,7 @@
  * @author    Romain Liautaud <romain@liautaud.fr>
  */
 
-define(['jquery', 'Crypto'], function ($, Crypto) {
+define(['jquery', './crypto.js'], function ($, Crypto) {
 	'use strict';
 
 	/**

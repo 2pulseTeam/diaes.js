@@ -21,7 +21,7 @@
 // THE SOFTWARE.
 //
 
-define(['aes'], function(AES) {
+define(['./aes.js'], function(AES) {
   // CBC spec from http://csrc.nist.gov/publications/nistpubs/800-38a/sp800-38a.pdf
   // PKCS padding spec from http://tools.ietf.org/html/rfc2315
 
