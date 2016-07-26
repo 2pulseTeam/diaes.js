@@ -315,6 +315,8 @@ SourceQueue.prototype.pause = function () {
 SourceQueue.prototype.elapsed = function () {
 	if (this.latestElapsed !== null) {
 		return this.latestElapsed;
+	} else if (this.isEmpty()) {
+		return 0;
 	} else {
 		return this.first().elapsed();
 	}
