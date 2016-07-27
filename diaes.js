@@ -296,9 +296,11 @@ SourceQueue.prototype.pause = function () {
 		return;
 	}
 
-	this.latestElapsed = this.first().elapsed();
+	if (!this.empty()) {
+		this.latestElapsed = this.first().elapsed();
+	}
+
 	this.state = STATE_PAUSED;
-	// TODO: Move elsewhere
 	window.clearInterval(this.reader.playingInterval);
 	this.reader.player.onPause();
 
