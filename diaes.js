@@ -351,7 +351,7 @@ var Reader = function (path, player) {
 	that.fetchMetadata(function () {
 		that.player.onMetadataFetched();
 
-		that.loadAndScheduleFragment(0, 12, function () {
+		that.loadAndScheduleFragment(0, 0, function () {
 			that.loadAndScheduleFragment(1);
 		});
 	});
