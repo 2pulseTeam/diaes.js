@@ -7,5 +7,6 @@
   },
   "author": "Romain Liautaud <romain@liautaud.fr>",
   "license": "ISC",
-  "main": "diaes.js"
+  "main": "diaes.js",
+  "private": true
 }

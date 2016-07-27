@@ -142,7 +142,9 @@ Source.prototype.schedule = function () {
 			that.endCallback();
 		}
 
-		that.queue.shift();
+		if (that.queue) {
+			that.queue.shift();
+		}
 	}, endsIn * 1000 + 200);
 };
 
@@ -179,7 +181,7 @@ Source.prototype.destroy = function () {
  * Computes the elapsed playing time.
  */
 Source.prototype.elapsed = function () {
-	return this.reader.context.currentTime - this.startsAt;
+	return this.reader.context.currentTime - this.startsAt + this.startsFrom;
 };
 
 // -------------------------------------------------------------------- //
