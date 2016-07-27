@@ -278,7 +278,7 @@ SourceQueue.prototype.play = function () {
 	this.latestElapsed = null;
 	this.state = STATE_PLAYING;
 	// TODO: Move elsewhere
-	this.reader.playingInterval = setInterval(this.reader.player.whilePlaying, 200);
+	this.reader.playingInterval = setInterval(this.reader.player.whilePlaying, 500);
 	this.reader.player.onPlay();
 
 	for (var i = 0; i < this.sources.length; i++) {
