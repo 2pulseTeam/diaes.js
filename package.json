@@ -8,5 +8,8 @@
   "author": "Romain Liautaud <romain@liautaud.fr>",
   "license": "ISC",
   "main": "diaes.js",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "jquery-browserify": "^1.8.1"
+  }
 }

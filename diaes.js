@@ -17,7 +17,7 @@
 
 'use strict';
 
-var $ = require('jquery');
+var $ = require('jquery-browserify');
 var Crypto = require('./crypto.js');
 
 /**
