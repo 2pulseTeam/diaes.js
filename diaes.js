@@ -296,7 +296,7 @@ SourceQueue.prototype.pause = function () {
 		return;
 	}
 
-	if (!this.empty()) {
+	if (!this.isEmpty()) {
 		this.latestElapsed = this.first().elapsed();
 	}
 
