@@ -365,7 +365,9 @@ var Reader = function (path, player) {
 Reader.prototype.fetchMetadata = function (callback) {
 	var that = this;
 
-	$.getJSON(this.path, { bust: (new Date()).getTime() }, function (metadata) {
+	$.getJSON(this.path, { 
+		bust: (new Date()).getTime() 
+	}).done(function (metadata) {
 		that.duration = metadata.duration;
 		
 		$.each(metadata.fragments, function (index, fragment) {
@@ -379,6 +381,8 @@ Reader.prototype.fetchMetadata = function (callback) {
 		});
 
 		callback();
+	}).fail(function (xhr) {
+		throw xhr.responseJSON;
 	});
 };
 
