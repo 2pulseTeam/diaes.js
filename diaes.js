@@ -382,7 +382,7 @@ Reader.prototype.fetchMetadata = function (callback) {
 
 		callback();
 	}).fail(function (xhr) {
-		throw xhr.responseJSON;
+		that.player.onMetadataError(xhr.responseJSON);
 	});
 };
 
@@ -625,23 +625,26 @@ Player.prototype = {
 	onMetadataFetched: function() {
 		console.info('onMetadataFetched');
 	},
+	onMetadataError: function(error) {
+		console.info('onMetadataError', error);
+	},
 	onPlay: function() {
 		console.info('onPlay');
 	},
 	onPause: function() {
-		console.log('onPause');
+		console.info('onPause');
 	},
 	onFinish: function() {
-		console.log('onFinish');
+		console.info('onFinish');
 	},
 	onBufferingStart: function() {
-		console.log('onBufferingStart');
+		console.info('onBufferingStart');
 	},
 	onBufferingStop: function() {
-		console.log('onBufferingStop');
+		console.info('onBufferingStop');
 	},
 	whilePlaying: function() {
-		console.log('whilePlaying');
+		console.info('whilePlaying');
 	}
 };
 
