@@ -382,7 +382,7 @@ Reader.prototype.fetchMetadata = function (callback) {
 
 		callback();
 	}).fail(function (xhr) {
-		that.player.onMetadataError(xhr.responseJSON);
+		that.player.onMetadataError($.parseJSON(xhr.responseText));
 	});
 };
 
