@@ -122,14 +122,21 @@ Source.prototype.setup = function (index) {
  * Schedules the beginning and the end of the play.
  */
 Source.prototype.schedule = function () {
-	// console.log('Schedule source', this);
+	console.log('Schedule source', this);
 
 	var that = this;
 
 	var endsAt = that.startsAt + that.buffer.duration;
 	var endsIn = endsAt - that.reader.context.currentTime;
 
-	that.node.start(that.startsAt, that.startsFrom);
+	try {
+		that.node.start(that.startsAt, that.startsFrom);
+	}
+	catch (e) {
+		console.log('error !!');
+	}
+
+
 
 	if (that.endTimer) {
 		clearTimeout(that.endTimer);
@@ -154,7 +161,7 @@ Source.prototype.schedule = function () {
 Source.prototype.cancel = function () {
 	// console.log('Cancel source', this);
 
-	this.node.stop();
+	this.node.disconnect();
 	clearTimeout(this.endTimer);
 	this.endTimer = null;
 };
@@ -163,6 +170,7 @@ Source.prototype.cancel = function () {
  * Destroys the audio source.
  */
 Source.prototype.destroy = function () {
+
 	this.cancel();
 
 	delete this.buffer;
@@ -170,11 +178,13 @@ Source.prototype.destroy = function () {
 	delete this.reader;
 	delete this.player;
 
-	delete this.node;
+	//delete this.node;
 	delete this.startsAt;
 	delete this.startsFrom;
 	delete this.endTimer;
 	delete this.endCallback;
+
+
 };
 
 /**
@@ -230,6 +240,8 @@ SourceQueue.prototype.last = function () {
  * Removes the first inserted source from the queue.
  */
 SourceQueue.prototype.shift = function () {
+	console.log('shift');
+
 	this.first().destroy();
 	
 	this.sources.shift();
