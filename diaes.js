@@ -321,7 +321,7 @@ SourceQueue.prototype.pause = function () {
 	}
 
 	if (!this.isEmpty()) {
-		this.first().startsFrom += this.first().elapsed();
+		this.first().startsFrom = this.first().elapsed();
 	}
 };
 
