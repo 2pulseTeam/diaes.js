@@ -695,6 +695,21 @@ var Manager = function () {
 	this.context = new (window.AudioContext || window.webkitAudioContext)();
 	this.gain = this.context.createGain();
 	this.gain.connect(this.context.destination);
+
+	/*
+	 * iOS attempts user action in order to play sound with the Web Audio API.
+	 * Here we play an empty sound on touchend event to unlock this limitation. 
+	 */
+	window.addEventListener("touchend", iosUnlockSound.bind(this), false);
+
+	function iosUnlockSound(event) {
+  		var buffer = this.context.createBuffer(1, 1, 22050);
+  		var source = this.context.createBufferSource();
+  		source.buffer = buffer;
+  		source.connect(this.context.destination);
+  		source.noteOn(0);
+  		window.removeEventListener("touchend", iosUnlockSound, false);
+	}	
 };
 
 Manager.prototype = {
