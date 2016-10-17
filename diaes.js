@@ -101,7 +101,7 @@ var Source = function (buffer, queue) {
  * @param {int} index The index of the current element in the queue.
  */
 Source.prototype.setup = function (index) {
-	// console.log('Setup source', this);
+	//console.log('Setup source', this);
 
 	this.node = this.reader.context.createBufferSource();
 	this.node.buffer = this.buffer;
@@ -122,18 +122,19 @@ Source.prototype.setup = function (index) {
  * Schedules the beginning and the end of the play.
  */
 Source.prototype.schedule = function () {
-	console.log('Schedule source', this);
+	//console.log('Schedule source', this);
+	console.log('The Queue', this.queue)
 
 	var that = this;
 
-	var endsAt = that.startsAt + that.buffer.duration;
+	var endsAt = that.startsAt + that.buffer.duration - that.startsFrom;
 	var endsIn = endsAt - that.reader.context.currentTime;
 
 	try {
 		that.node.start(that.startsAt, that.startsFrom);
 	}
 	catch (e) {
-		console.log('error !!');
+		console.log('error on schedule : ', e);
 	}
 
 
@@ -143,7 +144,7 @@ Source.prototype.schedule = function () {
 	}
 
 	that.endTimer = setTimeout(function () {
-		// console.log('Source ended 200ms ago', that);
+		console.log('Source ended 200ms ago', that);
 
 		if (that.endCallback) {
 			that.endCallback();
@@ -161,7 +162,7 @@ Source.prototype.schedule = function () {
 Source.prototype.cancel = function () {
 	// console.log('Cancel source', this);
 
-	this.node.disconnect();
+	this.node && this.node.disconnect();
 	clearTimeout(this.endTimer);
 	this.endTimer = null;
 };
@@ -250,12 +251,16 @@ SourceQueue.prototype.shift = function () {
 /**
  * Adds a buffer to the queue.
  */
-SourceQueue.prototype.push = function (buffer, beforeSetup) {
+SourceQueue.prototype.push = function (buffer, number, beforeSetup) {
 	// console.log('Pushing to the queue', buffer);
 
 	var source = new Source(buffer, this);
 	var sourceIndex = this.sources.length;
 
+	if (_.find(this.queue, {number: number}))
+		return ;
+
+	source.number = number;
 	this.sources.push(source);
 
 	if (typeof beforeSetup !== 'undefined') {
@@ -274,6 +279,7 @@ SourceQueue.prototype.push = function (buffer, beforeSetup) {
  * Removes all the sources from the queue.
  */
 SourceQueue.prototype.empty = function () {
+	console.log('empty queue');
 	while (!this.isEmpty()) {
 		this.shift();
 	}
@@ -283,8 +289,12 @@ SourceQueue.prototype.empty = function () {
  * Plays the queue's sources.
  */
 SourceQueue.prototype.play = function () {
+	console.log(this.state);
 	if (this.state == STATE_PLAYING) {
 		return;
+	}
+	if (this.state == STATE_FINISHED) {
+		return this.reader.setCurrentTime(0);
 	}
 
 	this.latestElapsed = null;
@@ -292,6 +302,8 @@ SourceQueue.prototype.play = function () {
 	// TODO: Move elsewhere
 	this.reader.playingInterval = setInterval(this.reader.player.whilePlaying, 500);
 	this.reader.player.onPlay();
+
+	console.log('available sources ', this.sources);
 
 	for (var i = 0; i < this.sources.length; i++) {
 		var source = this.get(i);
@@ -362,10 +374,13 @@ var Reader = function (path, player) {
 
 	var that = this;
 
+	that.player.onBufferingStart();
+
 	that.fetchMetadata(function () {
 		that.player.onMetadataFetched();
 
 		that.loadAndScheduleFragment(0, 0, function () {
+			that.player.onBufferingStop();
 			that.loadAndScheduleFragment(1);
 		});
 	});
@@ -503,9 +518,9 @@ Reader.prototype.scheduleFragment = function (number, offset) {
 
 	var that = this;
 
-	that.queue.push(that.fragments[number].buffer, function (source) {
+	that.queue.push(that.fragments[number].buffer, number, function (source) {
 		source.endCallback = function () {
-			// console.log('endCallback called for fragment ' + number);
+			console.log('endCallback called for fragment ', number);
 			that.currentFragmentNumber = number + 1;
 
 			// Maybe we don't have any fragments left to queue?
@@ -563,7 +578,7 @@ Reader.prototype.getCurrentTime = function () {
 /**
  * Seeks to a given time in the track.
  */
-Reader.prototype.setCurrentTime = function (time) {
+Reader.prototype.setCurrentTime = _.debounce(function (time) {
 	var that = this;
 
 	var number = that.getFragmentNumber(time);
@@ -574,18 +589,25 @@ Reader.prototype.setCurrentTime = function (time) {
 	that.buffering = true;
 	that.player.onBufferingStart();	
 	
+	console.log('Queue before empty ', that.queue);
+
 	that.queue.empty();
 
+	console.log('Fragment number loaded ', number);
+
 	that.loadFragment(number, function () {
+		if (that.currentFragmentNumber !== number)
+			return ;
 		that.player.onBufferingStop();
 		that.buffering = false;
+
 		that.queue.play();
 
 		that.scheduleFragment(number, offset);
 
 		that.loadAndScheduleFragment(number + 1);
 	});
-};
+}, 300);
 
 /**
  * Destroys the audio reader.
@@ -607,7 +629,9 @@ Reader.prototype.destroy = function () {
 /**
  * An audio player which mimics the HTMLAudioElement interface.
  */
-var Player = function (path, manager) {
+var Player = function (path, manager, config) {
+	_.extend(this, config);
+
 	this.manager = manager;
 	this.reader  = new Reader(path, this);
 };
@@ -725,8 +749,8 @@ Manager.prototype = {
 /**
  * Adds a new player to the manager.
  */
-Manager.prototype.add = function (path) {
-	var player = new Player(path, this);
+Manager.prototype.add = function (path, config) {
+	var player = new Player(path, this, config);
 
 	this.players.push(player);
 
@@ -789,3 +813,4 @@ module.exports = {
 	Player: Player,
 	Manager: Manager
 };
+
