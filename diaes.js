@@ -123,7 +123,6 @@ Source.prototype.setup = function (index) {
  */
 Source.prototype.schedule = function () {
 	//console.log('Schedule source', this);
-	console.log('The Queue', this.queue)
 
 	var that = this;
 
@@ -144,8 +143,6 @@ Source.prototype.schedule = function () {
 	}
 
 	that.endTimer = setTimeout(function () {
-		console.log('Source ended 200ms ago', that);
-
 		if (that.endCallback) {
 			that.endCallback();
 		}
@@ -241,8 +238,6 @@ SourceQueue.prototype.last = function () {
  * Removes the first inserted source from the queue.
  */
 SourceQueue.prototype.shift = function () {
-	console.log('shift');
-
 	this.first().destroy();
 	
 	this.sources.shift();
@@ -279,7 +274,6 @@ SourceQueue.prototype.push = function (buffer, number, beforeSetup) {
  * Removes all the sources from the queue.
  */
 SourceQueue.prototype.empty = function () {
-	console.log('empty queue');
 	while (!this.isEmpty()) {
 		this.shift();
 	}
@@ -289,7 +283,6 @@ SourceQueue.prototype.empty = function () {
  * Plays the queue's sources.
  */
 SourceQueue.prototype.play = function () {
-	console.log(this.state);
 	if (this.state == STATE_PLAYING) {
 		return;
 	}
@@ -302,8 +295,6 @@ SourceQueue.prototype.play = function () {
 	// TODO: Move elsewhere
 	this.reader.playingInterval = setInterval(this.reader.player.whilePlaying, 500);
 	this.reader.player.onPlay();
-
-	console.log('available sources ', this.sources);
 
 	for (var i = 0; i < this.sources.length; i++) {
 		var source = this.get(i);
@@ -365,6 +356,7 @@ var Reader = function (path, player) {
 	this.currentFragmentNumber = 0;
 	this.buffering = false;
 	this.duration = null;
+	this.jumped = false;
 
 	this.manager = this.player.manager;
 	this.context = this.manager.context;
@@ -379,7 +371,10 @@ var Reader = function (path, player) {
 	that.fetchMetadata(function () {
 		that.player.onMetadataFetched();
 
-		that.loadAndScheduleFragment(0, 0, function () {
+		that.loadFragment(0, function () {
+			if (that.jumped)
+				return ;
+			that.scheduleFragment(0, 0);
 			that.player.onBufferingStop();
 			that.loadAndScheduleFragment(1);
 		});
@@ -486,6 +481,8 @@ Reader.prototype.isFragmentLoaded = function (number) {
  */
 Reader.prototype.loadFragment = function (number, callback) {
 	// Maybe the fragment doesn't exist?
+	if (!this.fragments || !this.fragments.length)
+		console.log('no fragments');
 	if (number >= this.fragments.length) {
 		return;
 	}
@@ -581,32 +578,45 @@ Reader.prototype.getCurrentTime = function () {
 Reader.prototype.setCurrentTime = _.debounce(function (time) {
 	var that = this;
 
-	var number = that.getFragmentNumber(time);
-	var offset = time % FRAGMENT_DURATION;
-	that.currentFragmentNumber = number;
+	that.jumped = true;
 
-	that.queue.pause();
-	that.buffering = true;
-	that.player.onBufferingStart();	
-	
-	console.log('Queue before empty ', that.queue);
+	if (!that.fragments.length) {
+		var waitingFragments = window.setInterval(function () {
+			if (!that.fragments.length)
+				return ;
 
-	that.queue.empty();
+			window.clearInterval(waitingFragments);
 
-	console.log('Fragment number loaded ', number);
+			setup();
+		}, 100)
+	} else {
+		setup();
+	}
 
-	that.loadFragment(number, function () {
-		if (that.currentFragmentNumber !== number)
-			return ;
-		that.player.onBufferingStop();
-		that.buffering = false;
+	function setup () {
+		var number = that.getFragmentNumber(time);
+		var offset = time % FRAGMENT_DURATION;
+		that.currentFragmentNumber = number;
 
-		that.queue.play();
+		that.queue.pause();
+		that.buffering = true;
+		that.player.onBufferingStart();	
 
-		that.scheduleFragment(number, offset);
+		that.queue.empty();
 
-		that.loadAndScheduleFragment(number + 1);
-	});
+		that.loadFragment(number, function () {
+			if (that.currentFragmentNumber !== number)
+				return ;
+			that.player.onBufferingStop();
+			that.buffering = false;
+
+			that.queue.play();
+
+			that.scheduleFragment(number, offset);
+
+			that.loadAndScheduleFragment(number + 1);
+		});
+	}
 }, 300);
 
 /**
