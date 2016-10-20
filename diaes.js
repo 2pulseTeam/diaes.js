@@ -105,7 +105,9 @@ Source.prototype.setup = function (index) {
 
 	this.node = this.reader.context.createBufferSource();
 	this.node.buffer = this.buffer;
+	console.log("reader : ", this.reader)
 	this.node.connect(this.reader.gain);
+
 
 	if (index > 0) {
 		var previous = this.queue.get(index - 1);
@@ -367,6 +369,8 @@ var Reader = function (path, player) {
 	var that = this;
 
 	that.player.onBufferingStart();
+	that.buffering = true;
+	console.log(this.context.state);
 
 	that.fetchMetadata(function () {
 		that.player.onMetadataFetched();
@@ -376,6 +380,7 @@ var Reader = function (path, player) {
 				return ;
 			that.scheduleFragment(0, 0);
 			that.player.onBufferingStop();
+			that.buffering = false;
 			that.loadAndScheduleFragment(1);
 		});
 	});
@@ -639,10 +644,11 @@ Reader.prototype.destroy = function () {
 /**
  * An audio player which mimics the HTMLAudioElement interface.
  */
-var Player = function (path, manager, config) {
+var Player = function (path, manager, config, id) {
 	_.extend(this, config);
 
 	this.manager = manager;
+	this.id = id;
 	this.reader  = new Reader(path, this);
 };
 
@@ -727,14 +733,49 @@ Player.prototype.destroy = function () {
  */
 var Manager = function () {
 	this.context = new (window.AudioContext || window.webkitAudioContext)();
-	this.gain = this.context.createGain();
-	this.gain.connect(this.context.destination);
+	console.log("context ", this.context)
+	var that = this;
+	if (this.context.state !== "running") {
+		fix(this.context);
+		setup();
+	}
+	else {
+		setup();
+	}
 
-	/*
-	 * iOS attempts user action in order to play sound with the Web Audio API.
-	 * Here we play an empty sound on touchend event to unlock this limitation. 
-	 */
-	window.addEventListener("touchend", iosUnlockSound.bind(this), false);
+	function fixSuspendedState(ac) {  
+		if(ac.state == 'suspended') {    
+			console.warn('AudioContext FIX: suspended. Try to wake it.')
+			if(ac.resume) {      
+				ac.resume();
+			}
+			return ac.state == 'running';
+		} else {
+			console.warn('AudioContext FIX: not suspended, nothing to do.')    
+			return true;
+		}
+	}
+
+	function fix(ac) {  
+		if(ac.state == 'running') 
+			return ;
+		setTimeout(function() {    
+			var fixed = fixSuspendedState(ac);
+			console.warn('AudioContext FIX: Applied, state is', fixed);
+		}, 2000)
+	}
+
+	function setup() {
+		console.log("setup ", that.context.state);
+		that.gain = that.context.createGain();
+		that.gain.connect(that.context.destination);
+
+		/*
+		 * iOS attempts user action in order to play sound with the Web Audio API.
+		 * Here we play an empty sound on touchend event to unlock this limitation. 
+		 */
+		window.addEventListener("touchend", iosUnlockSound.bind(that), false);
+	};
 
 	function iosUnlockSound(event) {
   		var buffer = this.context.createBuffer(1, 1, 22050);
@@ -743,7 +784,7 @@ var Manager = function () {
   		source.connect(this.context.destination);
   		source.noteOn(0);
   		window.removeEventListener("touchend", iosUnlockSound, false);
-	}	
+	}
 };
 
 Manager.prototype = {
@@ -760,7 +801,7 @@ Manager.prototype = {
  * Adds a new player to the manager.
  */
 Manager.prototype.add = function (path, config) {
-	var player = new Player(path, this, config);
+	var player = new Player(path, this, config, this.players.length);
 
 	this.players.push(player);
 
@@ -811,9 +852,18 @@ Manager.prototype.setVolume = function (volume) {
 /**
  * Pauses every managed player.
  */
-Manager.prototype.pauseAll = function () {
+Manager.prototype.pauseAll = function (id) {
 	for (var i = 0; i < this.players.length; i++) {
 		this.players[i].pause();
+		if (this.players[i].reader.buffering && this.players[i].id !== id) {
+			var that = this;
+			var interval = window.setInterval((function () {
+				if (!this.reader.buffering) {
+					this.pause();
+					window.clearInterval(interval);
+				}
+			}).bind(this.players[i]), 10)
+		}
 	}
 };
 
